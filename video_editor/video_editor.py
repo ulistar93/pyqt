@@ -60,7 +60,8 @@ class SavingWindowClass(QDialog, video_save_ui) :
         done_frame_num = 0
         for s, e in cutting_pair:
             for i in range(s, e+1):
-                output_video.write(self.parent.frame_all[i])
+                frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
+                output_video.write(frame_out)
                 done_frame_num += 1
                 self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         self.pBar.setValue(100)
