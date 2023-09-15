@@ -120,6 +120,25 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.video_frame_accum = []
         self.total_frame_num = 0
 
+    def clear_video(self):
+        self.frame_all = []
+        self.video_sizes = []
+        self.video_fps = []
+        self.video_frame_num = []
+        self.video_frame_accum = []
+        self.total_frame_num = 0
+
+        self.cutting_list = []
+
+        self.ImageLabel.clear()
+        self.slider.setValue(0) # run showImage
+        self.slider.setMaximum(99)
+
+        self.FileName_Label.setText("* please load video first *")
+        self.FrameNum_Label.setText("[/]")
+
+
+
     def blockFrame1(self, blockBool):
         self.listWidget.blockSignals(blockBool)
         self.listAddButton.setDisabled(blockBool)
@@ -186,15 +205,9 @@ class WindowClass(QMainWindow, video_editor_ui) :
             # TODO -  show 0 index image
         else :
             self.blockFrame2(True) # block
-            self.slider.setValue(0)
-            self.ImageLabel.clear()
             self.blockFrame1(False) # un-block
-            self.frame_all = []
-            self.video_sizes = []
-            self.video_fps = []
-            self.video_frame_num = []
-            self.video_frame_accum = []
-            self.total_frame_num = 0
+            self.clear_video()
+
     def LoadVideoImage(self):
         for video_file in self.file_list:
             cap = cv2.VideoCapture(str(video_file))
@@ -261,6 +274,8 @@ class WindowClass(QMainWindow, video_editor_ui) :
             sleep(1 / self.video_fps[0])
 
     def showImage(self, frame_idx):
+        if frame_idx >= len(self.frame_all):
+            return
         #print(f"[{frame_idx:04d}/{self.total_frame_num-1}]")
         self.showFilename()
         img = self.frame_all[frame_idx]
