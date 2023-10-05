@@ -1,4 +1,4 @@
-import sys
+import sys, os
 import typing
 from PyQt5.QtWidgets import *
 from PyQt5 import uic
@@ -9,14 +9,34 @@ import cv2
 import pdb
 from time import sleep
 import threading
+import platform
 
 #UI파일 연결
 #단, UI파일은 Python 코드 파일과 같은 디렉토리에 위치해야한다.
 video_editor_ui = uic.loadUiType("video_editor.ui")[0]
 video_save_ui = uic.loadUiType("video_save.ui")[0]
 
+config_dir = Path(os.getenv('LOCALAPPDATA')) / 'pyqt' if platform.system() == "Windows" else Path.home() / '.pyqt'
+config_file = str(config_dir.absolute() / 'video_editor.txt')
+last_dir = ""
+
 def is_video(filename: str) -> bool:
     return Path(filename).suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm']
+
+def last_visited_dir() -> str:
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            last_dir = f.read()
+            if os.path.exists(last_dir):
+                return last_dir
+    return str(Path.home())
+
+def last_visited_dir_save(last_dir: str) -> None:
+    if not config_dir.exists():
+        config_dir.mkdir(parents=True)
+    with open(config_file, 'w') as f:
+        f.write(last_dir)
+    return
 
 class SavingWindowClass(QDialog, video_save_ui) :
     def __init__(self, parent):
@@ -27,11 +47,16 @@ class SavingWindowClass(QDialog, video_save_ui) :
         self.buttonBox.rejected.connect(self.close)
         self.FindButton.clicked.connect(self.openDir)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.speedUp.valueChanged.connect(self.speedUpvalueChanged)
+        self.saveSpeed = 1
         self.parent = parent
 
+    def speedUpvalueChanged(self):
+        self.saveSpeed = self.speedUp.value()
+
     def openDir(self):
-        refer_dir = './' if self.parent.file_list[0] == '' else str(Path(self.parent.file_list[0]).parent.absolute())
-        self.filename = QFileDialog.getSaveFileName(self, 'Save file', refer_dir)[0]
+        # refer_dir = './' if self.parent.file_list[0] == '' else str(Path(self.parent.file_list[0]).parent.absolute())
+        self.filename = QFileDialog.getSaveFileName(self, 'Save file', last_visited_dir())[0]
         if Path(self.filename).suffix != '.mp4':
             self.filename += '.mp4'
         print(self.filename)
@@ -53,15 +78,18 @@ class SavingWindowClass(QDialog, video_save_ui) :
             print(" ** Warning: cutting list has odd count -> ignore the last cutting point **")
 
         total_output_frame_num = 0
+        real_output_frame_num = 0
         for s, e in cutting_pair:
             total_output_frame_num += e - s + 1
-        print(f"total_output_frame_num: {total_output_frame_num}")
+        real_output_frame_num = int(total_output_frame_num / self.saveSpeed)
+        print(f"total_output_frame_num: {total_output_frame_num} / {self.saveSpeed} = {real_output_frame_num}")
 
         done_frame_num = 0
         for s, e in cutting_pair:
             for i in range(s, e+1):
-                frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
-                output_video.write(frame_out)
+                if done_frame_num & self.saveSpeed == 0:
+                    frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
+                    output_video.write(frame_out)
                 done_frame_num += 1
                 self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         self.pBar.setValue(100)
@@ -100,7 +128,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
 
 
         self.playButton.clicked.connect(self.playVideo)
-        self.speedUp.blockSignals(False) # TODO - speed up
+        self.speedUp.valueChanged.connect(self.speedUpvalueChanged)
         self.sliderLeftButton.clicked.connect(self.prevFrame)
         self.sliderRightButton.clicked.connect(self.nextFrame)
 
@@ -119,6 +147,10 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.video_frame_num = []
         self.video_frame_accum = []
         self.total_frame_num = 0
+        self.playspeed = 1
+
+    def speedUpvalueChanged(self):
+        self.playspeed = self.speedUp.value()
 
     def clear_video(self):
         self.frame_all = []
@@ -138,7 +170,6 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.FrameNum_Label.setText("[/]")
 
 
-
     def blockFrame1(self, blockBool):
         self.listWidget.blockSignals(blockBool)
         self.listAddButton.setDisabled(blockBool)
@@ -148,7 +179,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.setAcceptDrops(not blockBool)
 
     def blockFrame2(self, blockBool):
-        #self.speedUp.blockSignals(blockBool) # TODO - speed up
+        self.speedUp.setDisabled(blockBool)
         self.sliderLeftButton.setDisabled(blockBool)
         self.sliderRightButton.setDisabled(blockBool)
         self.playButton.setDisabled(blockBool)
@@ -167,19 +198,24 @@ class WindowClass(QMainWindow, video_editor_ui) :
                 continue
             self.file_list.append(f)
             self.listWidget.addItem(f)
+        if len(dropfiles) > 0 :
+            last_visited_dir_save(str(Path(dropfiles[0]).parent))
 
     def addList(self):
-        openfiles = QFileDialog.getOpenFileNames(self, 'Open file', './')[0]
+        openfiles = QFileDialog.getOpenFileNames(self, 'Open file', last_visited_dir())[0]
         for f in openfiles:
             if f in self.file_list or not is_video(f):
                 continue
             self.file_list.append(f)
             self.listWidget.addItem(f)
+        if len(openfiles) > 0 :
+            last_visited_dir_save(str(Path(openfiles[0]).parent))
     def delList(self):
-        selected_item = self.listWidget.selectedItems()[0]
-        seleted_row = self.listWidget.row(selected_item)
-        del self.file_list[seleted_row]
-        self.listWidget.takeItem(seleted_row)
+        if len(self.listWidget.selectedItems()) > 0:
+            selected_item = self.listWidget.selectedItems()[0]
+            seleted_row = self.listWidget.row(selected_item)
+            del self.file_list[seleted_row]
+            self.listWidget.takeItem(seleted_row)
     def upList(self):
         selected_item = self.listWidget.selectedItems()[0]
         selected_row = self.listWidget.row(selected_item)
@@ -229,9 +265,11 @@ class WindowClass(QMainWindow, video_editor_ui) :
             cap = cv2.VideoCapture(str(video_file))
             est_frame_num = self.video_frame_num[i]
             real_frame_num = 0
+            try_frame_num = 0
             if cap.isOpened():
                 while True:
                     ret, frame = cap.read()
+                    try_frame_num += 1
                     if ret:
                         # print(f"{done_idx}/{total_frame_num} in {video_file}")
                         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -239,8 +277,10 @@ class WindowClass(QMainWindow, video_editor_ui) :
                         real_frame_num += 1
                         loading_cnt += 1
                         self.listpBar.setValue(loading_cnt)
-                    else:
+                    elif try_frame_num > est_frame_num:
                         break
+                    else:
+                        pass
             if est_frame_num != real_frame_num:
                 print(f"Warning: {video_file} has invalid frame: est {est_frame_num} -> real {real_frame_num}")
                 self.video_frame_num[i] = real_frame_num
@@ -258,11 +298,9 @@ class WindowClass(QMainWindow, video_editor_ui) :
             self.VideoThread = threading.Thread(target=self.playVideoThread, daemon=True)
             self.VideoThread.start() # run playVideoThread
     def prevFrame(self):
-        if self.slider.value() > 0:
-            self.slider.setValue(self.slider.value() - 1)
+        self.slider.setValue(max(self.slider.value() - self.playspeed, 0))
     def nextFrame(self):
-        if self.slider.value() < len(self.frame_all) - 1:
-            self.slider.setValue(self.slider.value() + 1)
+        self.slider.setValue(min(self.slider.value() + self.playspeed, len(self.frame_all) - 1))
 
     def playVideoThread(self):
         while self.playMode:
@@ -270,7 +308,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
             if current_frame == len(self.frame_all) - 1:
                 self.playMode = False
                 break
-            self.slider.setValue(current_frame + 1)
+            self.slider.setValue(min(current_frame + self.playspeed, len(self.frame_all) - 1))
             sleep(1 / self.video_fps[0])
 
     def showImage(self, frame_idx):
@@ -301,6 +339,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
         player_geo = self.PlayFrame.geometry()
         slider_geo = self.slider.geometry()
         sx, sy, sw, sh = player_geo.x() + slider_geo.x(), player_geo.y() + slider_geo.y(), slider_geo.width(), slider_geo.height()
+        # sx, sy, sw, sh = slider_geo.x(), slider_geo.y(), slider_geo.width(), slider_geo.height()
         frame_max = self.slider.maximum()
         left_padding = 5
         right_padding = 4
@@ -345,18 +384,20 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.update()
 
     def delCutter(self):
-        del_cutting_point = self.slider.value()
+        curr_point = self.slider.value()
         del_cutting_point_candi = -1
         del_cutting_point_idx = 0
         diff = self.total_frame_num
         for i, cutting_point in enumerate(self.cutting_list):
-            if abs(del_cutting_point - cutting_point) < diff:
-                diff = abs(del_cutting_point - cutting_point)
+            if abs(curr_point - cutting_point) < diff:
+                diff = abs(curr_point - cutting_point)
                 del_cutting_point_candi = cutting_point
                 del_cutting_point_idx = i
 
-        if del_cutting_point_candi != -1 and diff < 20:
+        if del_cutting_point_candi != -1: # and diff < 20:
+            del_cutting_point = del_cutting_point_candi
             del self.cutting_list[del_cutting_point_idx]
+            self.slider.setValue(del_cutting_point)
         print(self.cutting_list)
         self.update()
 
