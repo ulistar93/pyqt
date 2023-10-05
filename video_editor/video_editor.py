@@ -47,20 +47,20 @@ class SavingWindowClass(QDialog, video_save_ui) :
         self.buttonBox.rejected.connect(self.close)
         self.FindButton.clicked.connect(self.openDir)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
-        self.speedUp.valueChanged.connect(self.speedUpvalueChanged)
+        self.speedUp.valueChanged.connect(self.speedUp_valueChanged)
+        self.FilenamLineEdit.textChanged.connect(lambda : self.pBar.setValue(0))
         self.saveSpeed = 1
         self.parent = parent
 
-    def speedUpvalueChanged(self):
+    def speedUp_valueChanged(self):
         self.saveSpeed = self.speedUp.value()
 
     def openDir(self):
         # refer_dir = './' if self.parent.file_list[0] == '' else str(Path(self.parent.file_list[0]).parent.absolute())
-        self.filename = QFileDialog.getSaveFileName(self, 'Save file', last_visited_dir())[0]
-        if Path(self.filename).suffix != '.mp4':
-            self.filename += '.mp4'
-        print(self.filename)
-        self.FilenamLineEdit.setText(self.filename)
+        filename = QFileDialog.getSaveFileName(self, 'Save file', last_visited_dir())[0]
+        if Path(filename).suffix != '.mp4':
+            filename += '.mp4'
+        self.FilenamLineEdit.setText(filename)
 
     def save_video(self):
         fps = self.parent.video_fps[0]
@@ -69,7 +69,9 @@ class SavingWindowClass(QDialog, video_save_ui) :
         #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         fourcc = cv2.VideoWriter_fourcc(*'avc1')
 
-        output_video = cv2.VideoWriter(str(self.filename), fourcc, fps, (output_width, output_height))
+        filename = self.FilenamLineEdit.text()
+        print(filename)
+        output_video = cv2.VideoWriter(str(filename), fourcc, fps, (output_width, output_height))
 
         cutting_pair = []
         for i in range(len(self.parent.cutting_list) // 2):
@@ -84,12 +86,14 @@ class SavingWindowClass(QDialog, video_save_ui) :
         real_output_frame_num = int(total_output_frame_num / self.saveSpeed)
         print(f"total_output_frame_num: {total_output_frame_num} / {self.saveSpeed} = {real_output_frame_num}")
 
+        print(f"cutting_pair: {cutting_pair}")
         done_frame_num = 0
         for s, e in cutting_pair:
             for i in range(s, e+1):
-                if done_frame_num & self.saveSpeed == 0:
+                if done_frame_num % self.saveSpeed == 0:
                     frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
                     output_video.write(frame_out)
+                    print(f"save frame {i}")
                 done_frame_num += 1
                 self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         self.pBar.setValue(100)
@@ -102,7 +106,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.setupUi(self)
         self.setFixedSize(self.geometry().width(), self.geometry().height())
         self.FileName_Label.setText("* please load video first *")
-        self.FrameNum_Label.setText("[/]")
+        self.FrameNum_Label.setText("[         /]") # 9 spaces
 
         # 최종 확인 취소 버튼
         self.buttonBox.accepted.connect(self.SavingWindow)
@@ -124,12 +128,12 @@ class WindowClass(QMainWindow, video_editor_ui) :
         # self.VideoThread = QThread() # TODO - QThread?
 
         #self.slider.valueChanged.connect(lambda : self.showImage(self.slider.value()) or self.showFilename())
-        self.slider.valueChanged.connect(lambda : self.showImage(self.slider.value()))
+        self.slider.valueChanged.connect(self.slider_valueChanged)
 
-
-        self.playButton.clicked.connect(self.playVideo)
-        self.speedUp.valueChanged.connect(self.speedUpvalueChanged)
+        self.frameSpinBox.valueChanged.connect(self.frameSpinBox_valueChanged)
+        self.speedUp.valueChanged.connect(self.speedUp_valueChanged)
         self.sliderLeftButton.clicked.connect(self.prevFrame)
+        self.playButton.clicked.connect(self.playVideo)
         self.sliderRightButton.clicked.connect(self.nextFrame)
 
         # Cutter
@@ -149,8 +153,15 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.total_frame_num = 0
         self.playspeed = 1
 
-    def speedUpvalueChanged(self):
+    def frameSpinBox_valueChanged(self):
+        self.slider.setValue(self.frameSpinBox.value())
+
+    def speedUp_valueChanged(self):
         self.playspeed = self.speedUp.value()
+
+    def slider_valueChanged(self):
+        self.frameSpinBox.setValue(self.slider.value())
+        self.showImage(self.slider.value())
 
     def clear_video(self):
         self.frame_all = []
@@ -167,7 +178,8 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.slider.setMaximum(99)
 
         self.FileName_Label.setText("* please load video first *")
-        self.FrameNum_Label.setText("[/]")
+        self.FrameNum_Label.setText("[         /]") # 9 spaces
+
 
 
     def blockFrame1(self, blockBool):
@@ -179,7 +191,9 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.setAcceptDrops(not blockBool)
 
     def blockFrame2(self, blockBool):
+        self.frameSpinBox.setDisabled(blockBool)
         self.speedUp.setDisabled(blockBool)
+        self.slider.setDisabled(blockBool)
         self.sliderLeftButton.setDisabled(blockBool)
         self.sliderRightButton.setDisabled(blockBool)
         self.playButton.setDisabled(blockBool)
@@ -290,6 +304,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
         self.video_frame_accum = [ sum(self.video_frame_num[:x+1]) for x in range(len(self.video_frame_num)) ]
         assert(loading_cnt == self.total_frame_num)
         self.listpBar.setVisible(False)
+        self.FrameNum_Label.setText(f"[         /{self.total_frame_num-1}]") # 9 spaces
         self.showImage(0)
 
     def playVideo(self):
@@ -366,9 +381,6 @@ class WindowClass(QMainWindow, video_editor_ui) :
 
     def showFilename(self): # TODO - bug in VideoThread
         curr_idx = self.slider.value()
-        #print(f"[{curr_idx:04d}/{self.total_frame_num}]")
-        self.FrameNum_Label.setText(f"[{curr_idx:04d}/{self.total_frame_num-1}]")
-        #print([ curr_idx > fnum for fnum in self.video_frame_accum ])
         file_index = [ curr_idx > fnum for fnum in self.video_frame_accum ].index(False)
         # if curr_idx = 10, video_frame_accum = [100, 200, 300] -> [False, False, False] -> file_index = 0
         # if curr_idx = 110, video_frame_accum = [100, 200, 300] -> [True, False, False] -> file_index = 1
