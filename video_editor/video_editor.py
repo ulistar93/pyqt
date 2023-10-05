@@ -93,7 +93,6 @@ class SavingWindowClass(QDialog, video_save_ui) :
                 if done_frame_num % self.saveSpeed == 0:
                     frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
                     output_video.write(frame_out)
-                    print(f"save frame {i}")
                 done_frame_num += 1
                 self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         self.pBar.setValue(100)
@@ -390,7 +389,8 @@ class WindowClass(QMainWindow, video_editor_ui) :
 
     def setCutter(self):
         cutting_point = self.slider.value()
-        self.cutting_list.append(cutting_point)
+        if cutting_point not in self.cutting_list:
+            self.cutting_list.append(cutting_point)
         self.cutting_list.sort()
         print(self.cutting_list)
         self.update()
