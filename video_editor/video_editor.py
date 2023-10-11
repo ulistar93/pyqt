@@ -10,10 +10,14 @@ import pdb
 from time import sleep
 import threading
 import platform
+import numpy as np
 
 #UI파일 연결
 #단, UI파일은 Python 코드 파일과 같은 디렉토리에 위치해야한다.
-video_editor_ui = uic.loadUiType("video_editor.ui")[0]
+# video_editor_ui = uic.loadUiType("video_editor.ui")[0]
+video_editor_ui = uic.loadUiType("video_editor_large.ui")[0]
+# image_size = (640, 480)
+image_size = (1280, 720)
 video_save_ui = uic.loadUiType("video_save.ui")[0]
 
 config_dir = Path(os.getenv('LOCALAPPDATA')) / 'pyqt' if platform.system() == "Windows" else Path.home() / '.pyqt'
@@ -51,6 +55,9 @@ class SavingWindowClass(QDialog, video_save_ui) :
         self.FilenamLineEdit.textChanged.connect(lambda : self.pBar.setValue(0))
         self.saveSpeed = 1
         self.parent = parent
+        self.fps = self.parent.video_fps[0]
+        self.output_width, self.output_height = self.parent.video_sizes[0] # TODO
+        self.blackframe = np.zeros((self.output_height, self.output_width, 3), dtype=np.uint8)
 
     def speedUp_valueChanged(self):
         self.saveSpeed = self.speedUp.value()
@@ -63,15 +70,12 @@ class SavingWindowClass(QDialog, video_save_ui) :
         self.FilenamLineEdit.setText(filename)
 
     def save_video(self):
-        fps = self.parent.video_fps[0]
-        output_width, output_height = self.parent.video_sizes[0] # TODO
-
         #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         fourcc = cv2.VideoWriter_fourcc(*'avc1')
 
         filename = self.FilenamLineEdit.text()
         print(filename)
-        output_video = cv2.VideoWriter(str(filename), fourcc, fps, (output_width, output_height))
+        output_video = cv2.VideoWriter(str(filename), fourcc, self.fps, (self.output_width, self.output_height))
 
         cutting_pair = []
         for i in range(len(self.parent.cutting_list) // 2):
@@ -79,15 +83,23 @@ class SavingWindowClass(QDialog, video_save_ui) :
         if len(self.parent.cutting_list) % 2 == 1:
             print(" ** Warning: cutting list has odd count -> ignore the last cutting point **")
 
-        total_output_frame_num = 0
+        print(f"cutting_pair: {cutting_pair}")
+        cutting_output_frame_num = 0
         real_output_frame_num = 0
         for s, e in cutting_pair:
-            total_output_frame_num += e - s + 1
-        real_output_frame_num = int(total_output_frame_num / self.saveSpeed)
-        print(f"total_output_frame_num: {total_output_frame_num} / {self.saveSpeed} = {real_output_frame_num}")
+            cutting_output_frame_num += e - s + 1
+        real_output_frame_num = int(cutting_output_frame_num / self.saveSpeed)
+        black_front_frame = self.BlackFront.value()
+        black_rear_frame = self.BlackRear.value()
+        total_output_frame_num = black_front_frame + real_output_frame_num + black_rear_frame
+        print(f"total_output_frame_num: {total_output_frame_num} = B {black_front_frame} + {cutting_output_frame_num} / {self.saveSpeed} + B {black_rear_frame}")
 
-        print(f"cutting_pair: {cutting_pair}")
         done_frame_num = 0
+        for i in range(black_front_frame):
+            # frame_out = cv2.cvtColor(self.blackframe, cv2.COLOR_RGB2BGR)
+            output_video.write(self.blackframe)
+            done_frame_num += 1
+            self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         for s, e in cutting_pair:
             for i in range(s, e+1):
                 if done_frame_num % self.saveSpeed == 0:
@@ -95,6 +107,11 @@ class SavingWindowClass(QDialog, video_save_ui) :
                     output_video.write(frame_out)
                 done_frame_num += 1
                 self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
+        for i in range(black_rear_frame):
+            # frame_out = cv2.cvtColor(self.blackframe, cv2.COLOR_RGB2BGR)
+            output_video.write(self.blackframe)
+            done_frame_num += 1
+            self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         self.pBar.setValue(100)
         output_video.release()
         print("Done !")
@@ -333,7 +350,7 @@ class WindowClass(QMainWindow, video_editor_ui) :
         img = self.frame_all[frame_idx]
         qImg = QImage(img.data, img.shape[1], img.shape[0], img.shape[1] * 3, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qImg)
-        p = pixmap.scaled(640, 480, Qt.KeepAspectRatio)
+        p = pixmap.scaled(image_size[0], image_size[1], Qt.KeepAspectRatio)
         self.ImageLabel.setPixmap(p)
 
     def keyPressEvent(self, event):
