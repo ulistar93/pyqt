@@ -53,11 +53,13 @@ class SavingWindowClass(QDialog, video_save_ui) :
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.speedUp.valueChanged.connect(self.speedUp_valueChanged)
         self.FilenamLineEdit.textChanged.connect(lambda : self.pBar.setValue(0))
-        self.saveSpeed = 1
+        self.saveSpeed = 1.0
         self.parent = parent
         self.fps = self.parent.video_fps[0]
         self.output_width, self.output_height = self.parent.video_sizes[0] # TODO
         self.blackframe = np.zeros((self.output_height, self.output_width, 3), dtype=np.uint8)
+        self.BlackRear.setValue(0)
+        self.BlackFront.setValue(0)
 
     def speedUp_valueChanged(self):
         self.saveSpeed = self.speedUp.value()
@@ -84,11 +86,12 @@ class SavingWindowClass(QDialog, video_save_ui) :
             print(" ** Warning: cutting list has odd count -> ignore the last cutting point **")
 
         print(f"cutting_pair: {cutting_pair}")
-        cutting_output_frame_num = 0
-        real_output_frame_num = 0
+        cutting_output_frame_list = []
         for s, e in cutting_pair:
-            cutting_output_frame_num += e - s + 1
+            cutting_output_frame_list += list(range(s, e+1))
+        cutting_output_frame_num = len(cutting_output_frame_list)
         real_output_frame_num = int(cutting_output_frame_num / self.saveSpeed)
+        real_output_frame_index = [ int(x * self.saveSpeed) for x in range(real_output_frame_num) ]
         black_front_frame = self.BlackFront.value()
         black_rear_frame = self.BlackRear.value()
         total_output_frame_num = black_front_frame + real_output_frame_num + black_rear_frame
@@ -100,13 +103,12 @@ class SavingWindowClass(QDialog, video_save_ui) :
             output_video.write(self.blackframe)
             done_frame_num += 1
             self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
-        for s, e in cutting_pair:
-            for i in range(s, e+1):
-                if done_frame_num % self.saveSpeed == 0:
-                    frame_out = cv2.cvtColor(self.parent.frame_all[i], cv2.COLOR_RGB2BGR)
-                    output_video.write(frame_out)
-                done_frame_num += 1
-                self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
+        for i in real_output_frame_index:
+            frame_idx = cutting_output_frame_list[i]
+            frame_out = cv2.cvtColor(self.parent.frame_all[frame_idx], cv2.COLOR_RGB2BGR)
+            output_video.write(frame_out)
+            done_frame_num += 1
+            self.pBar.setValue(int(done_frame_num/total_output_frame_num*100))
         for i in range(black_rear_frame):
             # frame_out = cv2.cvtColor(self.blackframe, cv2.COLOR_RGB2BGR)
             output_video.write(self.blackframe)
@@ -440,4 +442,5 @@ if __name__ == "__main__" :
     myWindow = WindowClass()
     myWindow.show()
     app.exec_()
+
 

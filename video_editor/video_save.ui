@@ -99,22 +99,6 @@
     <string>xSpeed</string>
    </property>
   </widget>
-  <widget class="QSpinBox" name="speedUp">
-   <property name="geometry">
-    <rect>
-     <x>310</x>
-     <y>40</y>
-     <width>42</width>
-     <height>22</height>
-    </rect>
-   </property>
-   <property name="maximum">
-    <number>360</number>
-   </property>
-   <property name="value">
-    <number>1</number>
-   </property>
-  </widget>
   <widget class="QLabel" name="BlackText_2">
    <property name="geometry">
     <rect>
@@ -206,6 +190,28 @@
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="speedUp">
+   <property name="geometry">
+    <rect>
+     <x>310</x>
+     <y>40</y>
+     <width>51</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>0.100000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>20.000000000000000</double>
+   </property>
+   <property name="value">
+    <double>1.000000000000000</double>
    </property>
   </widget>
  </widget>
